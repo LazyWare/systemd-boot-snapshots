@@ -8,7 +8,7 @@ You can boot your system into a snapshot from the boot menu.
 It has support for all btrfs snapshots,
 including "Timeshift" and "Snapper".
 Read-only snapshots are supported as well.
-Supported initrd systems are "initramfs-tools" and "dracut", but only on Ubuntu like systems for now.
+Supported initrd systems are "initramfs-tools" and "dracut" only on Ubuntu like systems for now (but hopefully also in Arch with dracut or mkinitcpio in the future).
 
 By default a root overlay is setup when booting into a snapshot.
 This prevents changes to a snapshot and makes it possible to boot a read-only snapshot.
@@ -29,16 +29,19 @@ Desktop with "booted into a snapshot" notification:
 ![notification](notification.png)
 
 ### Requirements:
-systemd, libglib2.0-bin and overlayroot when using initramfs-tools.
+systemd, libglib2.0-bin and overlayroot when using initramfs-tools (when using mkinitcpio... still pending).
 
 ### Install:
 ```
 sudo make install
-sudo update-initramfs -ckall
+- sudo update-initramfs -ckall
+or
+- sudo dracut-ukify -a
+(mkinitcpio pending)
 ```
 
 After this you should run the tool you use to copy the kernel image to the UEFI partition (kernelstub for example).
-
+(In Arch with dracut it's not necessary)
 Ubuntu packages are available at my private repository at ppa:usarinheininga/ubuntu-plasma.
 To add this repository and install systemd-boot-snapshots, run:
 ```
@@ -54,6 +57,7 @@ and update when needed.
 To manually populate the boot menu with the available snapshots, run:
 ```
 sudo update-systemd-boot-snapshots
+
 ```
 
 At boot press space to enter the boot menu.

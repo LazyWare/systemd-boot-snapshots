@@ -1,3 +1,9 @@
+# File: snapper-snapshots.path
+# Project Path: ./snapper-snapshots.path
+# Installation Path: /usr/lib/systemd/system/snapper-snapshots.path
+#
+# Systemd path file to monitor Snapper snapshots
+
 [Unit]
 Description=Monitors for new Snapper snapshots
 

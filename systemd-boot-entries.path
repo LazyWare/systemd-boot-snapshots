@@ -1,3 +1,9 @@
+# File: systemd-boot-entries.path
+# Project Path: ./systemd-boot-entries.path
+# Installation Path: /usr/lib/systemd/system/systemd-boot-entries.path
+#
+# Systemd path file to monitor bootloader entries
+
 [Unit]
 Description=Monitors for new boot loader entries
 DefaultDependencies=no

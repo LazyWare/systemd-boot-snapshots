@@ -1,60 +1,108 @@
-### systemd-boot-snapshots
+# File: README.md
+# Project Path: ./README.md
+# Installation Path: /usr/share/doc/systemd-boot-snapshots/README.md
+#
+# systemd-boot-snapshots for Arch Linux
 
-### Description:
+This tool enhances systemd-boot by adding BTRFS snapshots to the boot menu.
 
-Systemd-boot-snapshot improves systemd-boot by adding btrfs snapshots to the boot menu.
+## Features
 
-You can boot your system into a snapshot from the boot menu.
-It has support for all btrfs snapshots,
-including "Timeshift" and "Snapper".
-Read-only snapshots are supported as well.
-Supported initrd systems are "initramfs-tools" and "dracut", but only on Ubuntu like systems for now.
+- Boot into a system snapshot directly from the boot menu
+- Support for BTRFS snapshots, including those created with "Timeshift" and "Snapper"
+- Support for read-only snapshots
+- Automatic overlay configuration when booting from a snapshot
+- Automatic mounting of kernel modules directory from the main volume if needed
+- Desktop notification when booting in snapshot mode
 
-By default a root overlay is setup when booting into a snapshot.
-This prevents changes to a snapshot and makes it possible to boot a read-only snapshot.
+## Requirements
 
-With systemd-boot there is a big chance the booted kernel is not supported by
-the snapshot, since the kernel is installed on the UEFI partition and is not part of the snapshot.
-When this is the case, systemd-boot-snapshots will mount the /lib/modules/{KERNEL_VERSION} directory
-from the master snapshot onto the modules directory from the snapshot.
+- Arch Linux or derivatives
+- systemd-boot as bootloader
+- BTRFS filesystem with snapshots
+- mkinitcpio or dracut for generating the initramfs
 
-A notification message will be shown at the desktop to notify the user of being booted into a snapshot.
+## Manual Installation
 
-## Screenshots:
+1. Clone this repository or download the required files
 
-Boot menu:
-![bootmenu](boot-menu.png)
+2. Run the installation script:
+   ```
+   sudo bash ./install.sh
+   ```
 
-Desktop with "booted into a snapshot" notification:
-![notification](notification.png)
+3. Update the initramfs image:
+   
+   With mkinitcpio (standard Arch Linux):
+   ```
+   sudo mkinitcpio -P
+   ```
+   
+   With dracut (EndeavourOS, Garuda Linux):
+   ```
+   sudo dracut -f
+   ```
 
-### Requirements:
-systemd, libglib2.0-bin and overlayroot when using initramfs-tools.
+4. Manually update the systemd-boot menu:
+   ```
+   sudo update-systemd-boot-snapshots
+   ```
 
-### Install:
+## AUR Package Installation
+
+If you prefer to install via AUR, you can create and install the package:
+
+```bash
+git clone https://aur.archlinux.org/systemd-boot-snapshots.git
+cd systemd-boot-snapshots
+makepkg -si
 ```
-sudo make install
-sudo update-initramfs -ckall
-```
 
-After this you should run the tool you use to copy the kernel image to the UEFI partition (kernelstub for example).
+## Configuration
 
-Ubuntu packages are available at my private repository at ppa:usarinheininga/ubuntu-plasma.
-To add this repository and install systemd-boot-snapshots, run:
-```
-sudo add-apt-repository ppa:usarinheininga/ubuntu-plasma
-sudo apt-get update
-sudo apt install systemd-boot-snapshots
-```
+The configuration file is located at `/etc/default/systemd-boot-snapshots.conf` and contains the following options:
 
-### Usage:
-Systemd-boot-snapshots will monitor the system for new snapshots or changes to the boot loader config entries
-and update when needed.
+- `SHOW_SNAPSHOTS_MAX`: maximum number of snapshots to show (default: 99999)
+- `SNAPSHOT_PERIOD_TYPE`: type of snapshots to show (default: "all", options: "ondemand", "boot", "hourly", "daily", "weekly", "monthly")
+- `USE_OVERLAYROOT`: whether to use an overlay to protect the snapshot (default: "true")
+- `VERBOSE`: verbosity level (default: 0)
 
-To manually populate the boot menu with the available snapshots, run:
+## Usage
+
+The tool will automatically monitor the system for new snapshots or changes to the bootloader configuration and update the boot menu when necessary.
+
+To manually populate the boot menu with available snapshots, run:
 ```
 sudo update-systemd-boot-snapshots
 ```
 
-At boot press space to enter the boot menu.
-Now you can select a snapshot entry to boot into.
+At boot time, press the space bar to enter the boot menu.
+Now you can select a snapshot entry to boot into that system state.
+
+When booting into a snapshot, you will see a desktop notification informing you that you are in snapshot mode and that changes to the system will be discarded on reboot.
+
+## Notes for Arch Linux and derivatives
+
+This project has been adapted from a version originally developed for Ubuntu/Fedora. The adaptation takes into account the specificities of Arch Linux and derivatives, in particular:
+
+1. Supports both mkinitcpio (standard Arch Linux) and dracut (EndeavourOS, Garuda Linux)
+2. Handles Arch Linux-specific paths differently
+3. Supports common desktop notification methods in Arch distributions
+4. Automatically detects the initramfs system in use and configures accordingly
+
+## Troubleshooting
+
+- If snapshots don't appear in the boot menu, verify that:
+  - systemd-boot is properly installed and configured
+  - the root filesystem is BTRFS
+  - valid BTRFS snapshots exist
+  - the update-systemd-boot-snapshots script runs without errors
+
+- If you can't boot into a snapshot, verify:
+  - For systems with mkinitcpio: that the systemd-boot-snapshots hook is included in /etc/mkinitcpio.conf
+  - For systems with dracut: that the 90systemd-boot-snapshots module is present in /usr/lib/dracut/modules.d/
+  - In both cases: that the parent_subvol kernel parameter is correct
+  
+- If you don't see the desktop notification, verify that:
+  - the system is actually running from a snapshot
+  - desktop notification packages are installed

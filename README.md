@@ -1,6 +1,5 @@
 # File: README.md
 # Project Path: ./README.md
-# Installation Path: /usr/share/doc/systemd-boot-snapshots/README.md
 #
 # Documentation for systemd-boot-snapshots
 

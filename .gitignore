@@ -19,8 +19,6 @@ pkg/
 dist/
 *.tar.gz
 *.sha256
-.kdev4/
-*.kdev4
 
 # IDE and editor files
 .vscode/

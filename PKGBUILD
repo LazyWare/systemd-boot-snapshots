@@ -18,7 +18,7 @@ optdepends=('timeshift: support for Timeshift snapshots'
             'libnotify: support for desktop notifications'
             'mkinitcpio: standard Arch Linux initramfs generator'
             'dracut: alternative initramfs generator')
-backup=('etc/default/systemd-boot-snapshots.conf')
+backup=('etc/systemd-boot-snapshots.conf')
 install=${pkgname}.install
 source=("${pkgname}-${pkgver}.tar.gz::${url}/archive/v${pkgver}.tar.gz")
 sha256sums=('99e56beb2818aaaf513f168543d0a0c04b07d8a92c77f78abf6e9c593d07e1b2')

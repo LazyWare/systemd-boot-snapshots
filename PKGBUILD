@@ -4,13 +4,13 @@
 #
 # PKGBUILD file for systemd-boot-snapshots
 
-# Maintainer: Your Name <your.email@example.com>
+# Maintainer: [Anonimo] <anonimo@vivaldi.net>
 pkgname=systemd-boot-snapshots
 pkgver=0.1.1
 pkgrel=1
 pkgdesc="Enhances systemd-boot by adding BTRFS snapshots to the boot menu"
 arch=('any')
-url="https://github.com/yourusername/systemd-boot-snapshots"
+url="https://github.com/LazyWare/systemd-boot-snapshots"
 license=('GPL3')
 depends=('systemd' 'btrfs-progs')
 optdepends=('timeshift: support for Timeshift snapshots'

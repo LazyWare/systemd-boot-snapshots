@@ -1,12 +1,59 @@
 # File: systemd-boot-snapshots.install
 # Project Path: ./systemd-boot-snapshots.install
-# Installation Path: N/A (used only for package installation hooks)
+# Installation Path: N/A (used for package installation hooks)
 #
-# Pacman script for systemd-boot-snapshots
-# Supports both mkinitcpio and dracut
+# Package installation hooks for pacman
+
+# Function to detect EFI partition mount point
+detect_efi_mount() {
+    # Try common EFI mount locations
+    for mount_point in "/boot/efi" "/boot" "/efi"; do
+        if mountpoint -q "$mount_point" && [ -d "$mount_point/EFI" ]; then
+            echo "$mount_point"
+            return 0
+        fi
+    done
+    
+    # If no standard location is found, try to find it from fstab
+    local efi_mount
+    efi_mount=$(grep -E "vfat|fat32" /etc/fstab | grep -E "/boot/efi|/boot|/efi" | awk '{print $2}' | head -n 1)
+    
+    if [ -n "$efi_mount" ] && [ -d "$efi_mount/EFI" ]; then
+        echo "$efi_mount"
+        return 0
+    fi
+    
+    # Last resort, check mounted filesystems
+    efi_mount=$(mount | grep "vfat" | grep -E "/boot/efi|/boot|/efi" | awk '{print $3}' | head -n 1)
+    
+    if [ -n "$efi_mount" ] && [ -d "$efi_mount/EFI" ]; then
+        echo "$efi_mount"
+        return 0
+    fi
+    
+    echo "/boot/efi"  # Default fallback
+    return 1
+}
 
 post_install() {
-  echo "Installation of systemd-boot-snapshots completed."
+  echo "Installation of systemd-boot-snapshots v0.1.1 completed."
+  
+  # Copy default config to /etc/ if it doesn't exist
+  if [ ! -f /etc/systemd-boot-snapshots.conf ] && [ -f /etc/default/systemd-boot-snapshots.conf ]; then
+    cp /etc/default/systemd-boot-snapshots.conf /etc/systemd-boot-snapshots.conf
+    echo "Configuration file created at /etc/systemd-boot-snapshots.conf"
+  fi
+  
+  # Detect EFI mount point
+  EFI_MOUNT=$(detect_efi_mount)
+  echo "Detected EFI partition at: $EFI_MOUNT"
+  
+  # Update the path in the systemd service if needed
+  if [ "$EFI_MOUNT" != "/boot/efi" ]; then
+    sed -i "s|PathModified=/boot/efi/loader/entries|PathModified=$EFI_MOUNT/loader/entries|g" \
+        /usr/lib/systemd/system/systemd-boot-entries.path
+    echo "Updated boot entries path to $EFI_MOUNT/loader/entries"
+  fi
   
   # Detect if the system uses dracut or mkinitcpio
   if command -v dracut >/dev/null 2>&1; then
@@ -20,18 +67,53 @@ post_install() {
     echo "Then run 'sudo mkinitcpio -P' to rebuild the initramfs"
   fi
   
+  # Detect and enable snapshot monitoring tools
+  snapshot_tools=""
+  
+  if command -v timeshift >/dev/null 2>&1; then
+    snapshot_tools="$snapshot_tools timeshift"
+  fi
+  
+  if command -v snapper >/dev/null 2>&1; then
+    snapshot_tools="$snapshot_tools snapper"
+  fi
+  
   echo ""
-  echo "To enable snapshot monitoring, run:"
+  echo "To enable boot entries monitoring, run:"
   echo "sudo systemctl enable systemd-boot-entries.path"
+  
+  if echo "$snapshot_tools" | grep -q "snapper"; then
+    echo ""
+    echo "Snapper detected. To enable Snapper snapshot monitoring, run:"
+    echo "sudo systemctl enable snapper-snapshots.path"
+  fi
+  
+  if echo "$snapshot_tools" | grep -q "timeshift"; then
+    echo ""
+    echo "Timeshift detected. To enable Timeshift snapshot monitoring, run:"
+    echo "sudo systemctl enable timeshift-snapshots.path"
+  fi
+  
   echo ""
-  echo "If using Snapper, also run:"
-  echo "sudo systemctl enable snapper-snapshots.path"
-  echo ""
-  echo "If using Timeshift, also run:"
-  echo "sudo systemctl enable timeshift-snapshots.path"
+  echo "After configuring, run 'sudo update-systemd-boot-snapshots' to populate the boot menu."
 }
 
 post_upgrade() {
+  # Copy config from /etc/default if main config is missing
+  if [ ! -f /etc/systemd-boot-snapshots.conf ] && [ -f /etc/default/systemd-boot-snapshots.conf ]; then
+    cp /etc/default/systemd-boot-snapshots.conf /etc/systemd-boot-snapshots.conf
+    echo "Configuration file created at /etc/systemd-boot-snapshots.conf"
+  fi
+  
+  # EFI mount point detection and update
+  EFI_MOUNT=$(detect_efi_mount)
+  if [ "$EFI_MOUNT" != "/boot/efi" ] && [ -f /usr/lib/systemd/system/systemd-boot-entries.path ]; then
+    sed -i "s|PathModified=/boot/efi/loader/entries|PathModified=$EFI_MOUNT/loader/entries|g" \
+        /usr/lib/systemd/system/systemd-boot-entries.path
+    echo "Updated boot entries path to $EFI_MOUNT/loader/entries"
+  fi
+  
+  # Run rest of post-install
   post_install
 }
 
@@ -54,5 +136,8 @@ pre_remove() {
 post_remove() {
   echo "systemd-boot-snapshots has been removed."
   echo "You may want to manually clean up any snapshot entries from the boot menu:"
-  echo "ls /boot/efi/loader/entries/*snapshot*.conf"
+  
+  # Try to detect EFI location for better guidance
+  EFI_MOUNT=$(detect_efi_mount)
+  echo "ls $EFI_MOUNT/loader/entries/*snapshot*.conf"
 }

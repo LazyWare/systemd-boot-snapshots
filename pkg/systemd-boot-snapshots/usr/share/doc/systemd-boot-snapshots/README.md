@@ -2,8 +2,6 @@
 # Project Path: ./README.md
 # Installation Path: /usr/share/doc/systemd-boot-snapshots/README.md
 #
-# Documentation for systemd-boot-snapshots
-
 # systemd-boot-snapshots for Arch Linux
 
 This tool enhances systemd-boot by adding BTRFS snapshots to the boot menu.
@@ -60,21 +58,9 @@ cd systemd-boot-snapshots
 makepkg -si
 ```
 
-After installation, enable the path units:
-```bash
-# Required for all installations
-sudo systemctl enable systemd-boot-entries.path
-
-# Only if you use Snapper
-sudo systemctl enable snapper-snapshots.path
-
-# Only if you use Timeshift
-sudo systemctl enable timeshift-snapshots.path
-```
-
 ## Configuration
 
-The configuration file is located at `/etc/systemd-boot-snapshots.conf` with a fallback at `/etc/default/systemd-boot-snapshots.conf` and contains the following options:
+The configuration file is located at `/etc/default/systemd-boot-snapshots.conf` and contains the following options:
 
 - `SHOW_SNAPSHOTS_MAX`: maximum number of snapshots to show (default: 99999)
 - `SNAPSHOT_PERIOD_TYPE`: type of snapshots to show (default: "all", options: "ondemand", "boot", "hourly", "daily", "weekly", "monthly")
@@ -103,9 +89,6 @@ This project has been adapted from a version originally developed for Ubuntu/Fed
 2. Handles Arch Linux-specific paths differently
 3. Supports common desktop notification methods in Arch distributions
 4. Automatically detects the initramfs system in use and configures accordingly
-5. Automatically detects EFI partition location (supports /boot/efi, /boot, and /efi)
-6. Automatically detects and adapts to Timeshift and Snapper configurations
-7. Follows Arch Linux path conventions (/usr/bin instead of /usr/sbin, etc.)
 
 ## Troubleshooting
 
@@ -123,7 +106,3 @@ This project has been adapted from a version originally developed for Ubuntu/Fed
 - If you don't see the desktop notification, verify that:
   - the system is actually running from a snapshot
   - desktop notification packages are installed
-
-## Version History
-
-See [CHANGELOG.md](CHANGELOG.md) for version history and changes.

@@ -1,27 +1,12 @@
 # File: CHANGELOG.md
 # Project Path: ./CHANGELOG.md
 # Installation Path: /usr/share/doc/systemd-boot-snapshots/CHANGELOG.md
-#
-# Version history for systemd-boot-snapshots
 
 # Changelog
 
 All notable changes to the systemd-boot-snapshots project will be documented in this file.
 
-## [0.1.1] - 2025-04-23
-
-### Added
-- Support for reading configuration from both `/etc/systemd-boot-snapshots.conf` and `/etc/default/systemd-boot-snapshots.conf`
-- Automatic detection of EFI partition mount point (supports /boot/efi, /boot, and /efi)
-- Automatic detection of Timeshift and Snapper snapshot paths
-- Automatic copying of configuration from /etc/default to /etc on installation or update
-
-### Fixed
-- Fixed path assumptions for different Arch Linux configurations
-- Better handling of snapshot tool detection and initialization
-- Improved error handling when EFI partition or snapshots are not found
-
-## [0.1.0] - 2025-04-22
+## [0.1.0] - 2025-04-23
 
 ### Added
 - Initial release for Arch Linux

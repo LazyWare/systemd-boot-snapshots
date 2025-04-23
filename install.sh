@@ -1,124 +1,253 @@
-#!/bin/bash
 # File: install.sh
 # Project Path: ./install.sh
-# Installation Path: N/A (used only for manual installation)
+# Installation Path: N/A (used for manual installation)
 #
-# Manual installation script for systemd-boot-snapshots for Arch Linux
+# Installation script for systemd-boot-snapshots
 # Supports both mkinitcpio and dracut
-#
 
 set -e
 
-# Define colors for output
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-NC='\033[0m' # No Color
+# Function to display script usage
+show_help() {
+    echo "Installation of systemd-boot-snapshots for Arch Linux"
+    echo ""
+    echo "Usage: $0 [options]"
+    echo "  --help         Show this help message"
+    echo "  --uninstall    Uninstall systemd-boot-snapshots"
+    echo ""
+}
 
-# Check if running as root
-if [ "$EUID" -ne 0 ]; then
-    echo -e "${RED}Error: This script must be run as root${NC}"
-    exit 1
-fi
-
-# Define paths
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-INSTALL_DIR="/usr/share/systemd-boot-snapshots"
-CONFIG_DIR="/etc/default"
-BIN_DIR="/usr/bin"
-DOC_DIR="/usr/share/doc/systemd-boot-snapshots"
-LICENSE_DIR="/usr/share/licenses/systemd-boot-snapshots"
-
-echo -e "${GREEN}Installing systemd-boot-snapshots...${NC}"
-
-# Create directories if they don't exist
-mkdir -p "${INSTALL_DIR}"
-mkdir -p "${CONFIG_DIR}"
-mkdir -p "${DOC_DIR}"
-mkdir -p "${LICENSE_DIR}"
-
-# Install main scripts
-echo -e "${GREEN}Installing scripts...${NC}"
-cp -v "${SCRIPT_DIR}/scripts/"*.sh "${INSTALL_DIR}/"
-chmod +x "${INSTALL_DIR}"/*.sh
-
-# Install update script
-echo -e "${GREEN}Installing systemd-boot update script...${NC}"
-cp -v "${SCRIPT_DIR}/bin/update-systemd-boot-snapshots" "${BIN_DIR}/"
-chmod +x "${BIN_DIR}/update-systemd-boot-snapshots"
-
-# Install mkinitcpio hook if it exists
-if [ -f "${SCRIPT_DIR}/mkinitcpio/systemd-boot-snapshots.hook" ]; then
-    echo -e "${GREEN}Installing mkinitcpio hook...${NC}"
-    mkdir -p /usr/lib/initcpio/hooks
-    mkdir -p /usr/lib/initcpio/install
-    cp -v "${SCRIPT_DIR}/mkinitcpio/systemd-boot-snapshots.hook" /usr/lib/initcpio/hooks/systemd-boot-snapshots
-    cp -v "${SCRIPT_DIR}/mkinitcpio/systemd-boot-snapshots.install" /usr/lib/initcpio/install/systemd-boot-snapshots
-fi
-
-# Install dracut module if it exists
-if [ -f "${SCRIPT_DIR}/dracut/module-setup.sh" ]; then
-    echo -e "${GREEN}Installing dracut module...${NC}"
-    mkdir -p /usr/lib/dracut/modules.d/90systemd-boot-snapshots
-    cp -v "${SCRIPT_DIR}/dracut/"* /usr/lib/dracut/modules.d/90systemd-boot-snapshots/
-fi
-
-# Install default configuration file
-echo -e "${GREEN}Installing configuration...${NC}"
-if [ ! -f "${CONFIG_DIR}/systemd-boot-snapshots.conf" ]; then
-    cp -v "${SCRIPT_DIR}/config/systemd-boot-snapshots.conf" "${CONFIG_DIR}/"
-else
-    echo -e "${YELLOW}Configuration file already exists, not overwriting.${NC}"
-    echo -e "${YELLOW}Check ${SCRIPT_DIR}/config/systemd-boot-snapshots.conf for new options.${NC}"
-fi
-
-# Install documentation
-echo -e "${GREEN}Installing documentation...${NC}"
-# Copy README and other markdown files
-if [ -f "${SCRIPT_DIR}/README.md" ]; then
-    cp -v "${SCRIPT_DIR}/README.md" "${DOC_DIR}/"
-fi
-# Copy any additional documentation files
-for doc in "${SCRIPT_DIR}"/*.md; do
-    if [ -f "$doc" ] && [ "$(basename "$doc")" != "README.md" ]; then
-        cp -v "$doc" "${DOC_DIR}/"
+# Detect which initramfs system is in use
+detect_initramfs_system() {
+    if command -v dracut >/dev/null 2>&1; then
+        echo "dracut"
+    else
+        echo "mkinitcpio"
     fi
-done
+}
 
-# Install license files
-echo -e "${GREEN}Installing license...${NC}"
-if [ -f "${SCRIPT_DIR}/LICENSE" ]; then
-    cp -v "${SCRIPT_DIR}/LICENSE" "${LICENSE_DIR}/"
-elif [ -f "${SCRIPT_DIR}/COPYING" ]; then
-    cp -v "${SCRIPT_DIR}/COPYING" "${LICENSE_DIR}/"
-fi
+# Function to detect EFI partition mount point
+detect_efi_mount() {
+    # Try common EFI mount locations
+    for mount_point in "/boot/efi" "/boot" "/efi"; do
+        if mountpoint -q "$mount_point" && [ -d "$mount_point/EFI" ]; then
+            echo "$mount_point"
+            return 0
+        fi
+    done
+    
+    # If no standard location is found, try to find it from fstab or mounted partitions
+    local efi_mount
+    efi_mount=$(grep -E "/boot/efi|/boot|/efi" /etc/fstab | grep -i "vfat|fat32" | awk '{print $2}' | head -n 1)
+    
+    if [ -n "$efi_mount" ] && [ -d "$efi_mount/EFI" ]; then
+        echo "$efi_mount"
+        return 0
+    fi
+    
+    # Last resort, check mounted filesystems
+    efi_mount=$(mount | grep "vfat" | grep -E "/boot/efi|/boot|/efi" | awk '{print $3}' | head -n 1)
+    
+    if [ -n "$efi_mount" ] && [ -d "$efi_mount/EFI" ]; then
+        echo "$efi_mount"
+        return 0
+    fi
+    
+    echo ""
+    return 1
+}
 
-# Setup notification files if they exist
-if [ -d "${SCRIPT_DIR}/notifications" ]; then
-    echo -e "${GREEN}Installing notification files...${NC}"
-    mkdir -p "${INSTALL_DIR}/notifications"
-    cp -rv "${SCRIPT_DIR}/notifications/"* "${INSTALL_DIR}/notifications/"
-fi
+# Function to determine snapshot tools and paths
+detect_snapshot_tools() {
+    local snapshot_tools=""
+    
+    # Check for Timeshift
+    if command -v timeshift >/dev/null 2>&1; then
+        snapshot_tools="$snapshot_tools timeshift"
+        # Check if custom path is configured
+        if [ -f /etc/timeshift.json ]; then
+            # Extract snapshot path from timeshift config
+            TIMESHIFT_PATH=$(grep -o '"backup_device_uuid" : "[^"]*"' /etc/timeshift.json | cut -d'"' -f4)
+            if [ -n "$TIMESHIFT_PATH" ]; then
+                echo "Found Timeshift config with UUID: $TIMESHIFT_PATH"
+            fi
+        fi
+    fi
+    
+    # Check for Snapper
+    if command -v snapper >/dev/null 2>&1; then
+        snapshot_tools="$snapshot_tools snapper"
+        # Check if custom path is configured
+        if [ -d /etc/snapper/configs ]; then
+            # List snapper configs
+            echo "Found Snapper configurations:"
+            ls -1 /etc/snapper/configs
+        fi
+    fi
+    
+    echo "$snapshot_tools"
+}
 
-# Add systemd service for automatic updates if it exists
-if [ -f "${SCRIPT_DIR}/systemd/systemd-boot-snapshots.service" ]; then
-    echo -e "${GREEN}Installing systemd service...${NC}"
+# Function to install
+install_snapshots() {
+    echo "Installing systemd-boot-snapshots..."
+    
+    INITRAMFS_SYSTEM=$(detect_initramfs_system)
+    echo "Detected initramfs system: $INITRAMFS_SYSTEM"
+    
+    EFI_MOUNT=$(detect_efi_mount)
+    if [ -z "$EFI_MOUNT" ]; then
+        echo "Warning: Could not detect EFI partition mount point. Defaulting to /boot/efi"
+        EFI_MOUNT="/boot/efi"
+    else
+        echo "Detected EFI partition mounted at: $EFI_MOUNT"
+    fi
+    
+    SNAPSHOT_TOOLS=$(detect_snapshot_tools)
+    echo "Detected snapshot tools: $SNAPSHOT_TOOLS"
+    
+    # Create required directories
+    mkdir -p /etc/default
+    mkdir -p /usr/bin
+    mkdir -p /usr/lib/systemd-boot-snapshots
     mkdir -p /usr/lib/systemd/system
-    cp -v "${SCRIPT_DIR}/systemd/systemd-boot-snapshots.service" /usr/lib/systemd/system/
-    cp -v "${SCRIPT_DIR}/systemd/systemd-boot-snapshots.path" /usr/lib/systemd/system/
+    
+    # Install configuration files
+    install -Dm644 systemd-boot-snapshots.conf /etc/default/systemd-boot-snapshots.conf
+    
+    # Copy default config to /etc/ if it doesn't exist
+    if [ ! -f /etc/systemd-boot-snapshots.conf ]; then
+        install -Dm644 systemd-boot-snapshots.conf /etc/systemd-boot-snapshots.conf
+    fi
+    
+    # Install main scripts
+    install -Dm755 update-systemd-boot-snapshots /usr/bin/update-systemd-boot-snapshots
+    install -Dm755 systemd-boot-mount-snapshot-modules /usr/lib/systemd-boot-snapshots/systemd-boot-mount-snapshot-modules
+    install -Dm755 systemd-boot-snapshots-notify /usr/lib/systemd-boot-snapshots/systemd-boot-snapshots-notify
+    
+    # Update EFI path in systemd-boot-entries.path
+    sed -i "s|PathModified=/boot/efi/loader/entries|PathModified=$EFI_MOUNT/loader/entries|g" systemd-boot-entries.path
+    
+    # Install systemd files
+    install -Dm644 update-systemd-boot-snapshots.service /usr/lib/systemd/system/update-systemd-boot-snapshots.service
+    install -Dm644 systemd-boot-entries.path /usr/lib/systemd/system/systemd-boot-entries.path
+    install -Dm644 snapper-snapshots.path /usr/lib/systemd/system/snapper-snapshots.path
+    install -Dm644 timeshift-snapshots.path /usr/lib/systemd/system/timeshift-snapshots.path
+    
+    # Installation specific to initramfs system
+    if [ "$INITRAMFS_SYSTEM" = "dracut" ]; then
+        # Installation for dracut
+        mkdir -p /usr/lib/dracut/modules.d/90systemd-boot-snapshots
+        install -Dm755 dracut/90systemd-boot-snapshots/module-setup.sh /usr/lib/dracut/modules.d/90systemd-boot-snapshots/module-setup.sh
+        install -Dm755 dracut/90systemd-boot-snapshots/systemd-boot-snapshots.sh /usr/lib/dracut/modules.d/90systemd-boot-snapshots/systemd-boot-snapshots.sh
+        ln -sf /usr/lib/systemd-boot-snapshots/systemd-boot-mount-snapshot-modules /usr/lib/dracut/modules.d/90systemd-boot-snapshots/systemd-boot-mount-snapshot-modules.sh
+        ln -sf /usr/lib/systemd-boot-snapshots/systemd-boot-snapshots-notify /usr/lib/dracut/modules.d/90systemd-boot-snapshots/systemd-boot-snapshots-notify
+        echo "Dracut configuration installed."
+    else
+        # Installation for mkinitcpio
+        mkdir -p /usr/lib/initcpio/hooks
+        mkdir -p /usr/lib/initcpio/install
+        install -Dm644 mkinitcpio/hooks/systemd-boot-snapshots /usr/lib/initcpio/hooks/systemd-boot-snapshots
+        install -Dm644 mkinitcpio/install/systemd-boot-snapshots /usr/lib/initcpio/install/systemd-boot-snapshots
+        
+        # Add systemd-boot-snapshots module to mkinitcpio.conf if not already present
+        if ! grep -q "systemd-boot-snapshots" /etc/mkinitcpio.conf; then
+            if grep -q "HOOKS=.*block" /etc/mkinitcpio.conf; then
+                sed -i 's/\(HOOKS=.*block\)/\1 systemd-boot-snapshots/' /etc/mkinitcpio.conf
+            else
+                sed -i 's/\(HOOKS=.*autodetect\)/\1 systemd-boot-snapshots/' /etc/mkinitcpio.conf
+            fi
+        fi
+        echo "Mkinitcpio configuration installed."
+    fi
+    
+    # Enable systemd services based on detected tools
     systemctl daemon-reload
-    systemctl enable systemd-boot-snapshots.path
-    systemctl start systemd-boot-snapshots.path
-fi
+    systemctl enable systemd-boot-entries.path
+    
+    # Enable snapshot monitoring based on detected tools
+    if echo "$SNAPSHOT_TOOLS" | grep -q "snapper"; then
+        systemctl enable snapper-snapshots.path
+        echo "Snapper snapshot monitoring enabled."
+    fi
+    
+    if echo "$SNAPSHOT_TOOLS" | grep -q "timeshift"; then
+        systemctl enable timeshift-snapshots.path
+        echo "Timeshift snapshot monitoring enabled."
+    fi
+    
+    # Update initramfs
+    echo "Updating initramfs..."
+    if [ "$INITRAMFS_SYSTEM" = "dracut" ]; then
+        # Update initramfs with dracut
+        dracut -f
+    else
+        # Update initramfs with mkinitcpio
+        mkinitcpio -P
+    fi
+    
+    echo "Installation complete. Running update-systemd-boot-snapshots..."
+    update-systemd-boot-snapshots
+    
+    echo "systemd-boot-snapshots v0.1.1 has been successfully installed and configured."
+    echo "You can now boot into snapshots from the systemd-boot menu (press space at boot)."
+}
 
-echo -e "${GREEN}Installation complete!${NC}"
-echo ""
-echo -e "${YELLOW}Next steps:${NC}"
-echo "1. Update your initramfs:"
-echo "   - For mkinitcpio: sudo mkinitcpio -P"
-echo "   - For dracut: sudo dracut -f"
-echo ""
-echo "2. Update systemd-boot snapshots menu:"
-echo "   sudo update-systemd-boot-snapshots"
-echo ""
-echo "3. Reboot to test the installation"
+# Function to uninstall
+uninstall_snapshots() {
+    echo "Uninstalling systemd-boot-snapshots..."
+    
+    INITRAMFS_SYSTEM=$(detect_initramfs_system)
+    
+    # Disable systemd services
+    systemctl disable --now timeshift-snapshots.path snapper-snapshots.path systemd-boot-entries.path update-systemd-boot-snapshots.service
+    systemctl daemon-reload
+    
+    # Remove common files
+    rm -f /etc/default/systemd-boot-snapshots.conf
+    rm -f /etc/systemd-boot-snapshots.conf
+    rm -f /usr/bin/update-systemd-boot-snapshots
+    rm -f /usr/lib/systemd-boot-snapshots/systemd-boot-mount-snapshot-modules
+    rm -f /usr/lib/systemd-boot-snapshots/systemd-boot-snapshots-notify
+    rm -f /usr/lib/systemd/system/update-systemd-boot-snapshots.service
+    rm -f /usr/lib/systemd/system/systemd-boot-entries.path
+    rm -f /usr/lib/systemd/system/snapper-snapshots.path
+    rm -f /usr/lib/systemd/system/timeshift-snapshots.path
+    
+    # Removal specific to initramfs system
+    if [ "$INITRAMFS_SYSTEM" = "dracut" ]; then
+        # Removal for dracut
+        rm -rf /usr/lib/dracut/modules.d/90systemd-boot-snapshots
+    else
+        # Removal for mkinitcpio
+        rm -f /usr/lib/initcpio/hooks/systemd-boot-snapshots
+        rm -f /usr/lib/initcpio/install/systemd-boot-snapshots
+        
+        # Remove module from mkinitcpio.conf
+        sed -i 's/ systemd-boot-snapshots//' /etc/mkinitcpio.conf
+    fi
+    
+    # Remove directory
+    rmdir --ignore-fail-on-non-empty /usr/lib/systemd-boot-snapshots/
+    
+    # Update initramfs
+    echo "Updating initramfs..."
+    if [ "$INITRAMFS_SYSTEM" = "dracut" ]; then
+        dracut -f
+    else
+        mkinitcpio -P
+    fi
+    
+    echo "systemd-boot-snapshots has been successfully uninstalled."
+}
+
+# Process arguments
+if [ "$1" = "--help" ]; then
+    show_help
+    exit 0
+elif [ "$1" = "--uninstall" ]; then
+    uninstall_snapshots
+    exit 0
+else
+    install_snapshots
+fi

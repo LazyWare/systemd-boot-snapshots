@@ -1,16 +1,14 @@
 # File: PKGBUILD
 # Project Path: ./PKGBUILD
-# Installation Path: N/A (used for building the package)
+# Installation Path: N/A (used only for building the package)
 #
-# PKGBUILD file for systemd-boot-snapshots
-
-# Maintainer: Your Name <your.email@example.com>
+# Maintainer: [Anonimo] <anonimo@vivaldi.net>
 pkgname=systemd-boot-snapshots
-pkgver=0.1.1
+pkgver=0.1.0
 pkgrel=1
 pkgdesc="Enhances systemd-boot by adding BTRFS snapshots to the boot menu"
 arch=('any')
-url="https://github.com/yourusername/systemd-boot-snapshots"
+url="https://github.com/LazyWare/systemd-boot-snapshots"
 license=('GPL3')
 depends=('systemd' 'btrfs-progs')
 optdepends=('timeshift: support for Timeshift snapshots'
@@ -18,8 +16,7 @@ optdepends=('timeshift: support for Timeshift snapshots'
             'libnotify: support for desktop notifications'
             'mkinitcpio: standard Arch Linux initramfs generator'
             'dracut: alternative initramfs generator')
-backup=('etc/default/systemd-boot-snapshots.conf'
-        'etc/systemd-boot-snapshots.conf')
+backup=('etc/default/systemd-boot-snapshots.conf')
 install=${pkgname}.install
 source=("${pkgname}-${pkgver}.tar.gz::${url}/archive/v${pkgver}.tar.gz")
 sha256sums=('SKIP')

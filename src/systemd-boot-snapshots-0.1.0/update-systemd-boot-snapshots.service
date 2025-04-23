@@ -1,0 +1,17 @@
+# File: update-systemd-boot-snapshots.service
+# Project Path: ./update-systemd-boot-snapshots.service
+# Installation Path: /usr/lib/systemd/system/update-systemd-boot-snapshots.service
+#
+# Systemd service file for updating systemd-boot snapshots
+
+[Unit]
+Description=Update systemd boot snapshots
+Before=shutdown.target sleep.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/update-systemd-boot-snapshots
+
+[Install]
+WantedBy=shutdown.target
+WantedBy=sleep.target

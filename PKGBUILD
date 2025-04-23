@@ -22,7 +22,7 @@ backup=('etc/default/systemd-boot-snapshots.conf'
         'etc/systemd-boot-snapshots.conf')
 install=${pkgname}.install
 source=("${pkgname}-${pkgver}.tar.gz::${url}/archive/v${pkgver}.tar.gz")
-sha256sums=('SKIP')
+sha256sums=('cf233faa6d679c7e67ba270c700ccd0323d2e38d472cef0ffb8ac00b642ccd19')
 
 package() {
   cd "${srcdir}/${pkgname}-${pkgver}"

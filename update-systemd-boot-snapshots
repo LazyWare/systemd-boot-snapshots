@@ -21,12 +21,47 @@ SHOW_SNAPSHOTS_MAX=${SHOW_SNAPSHOTS_MAX:-"99999"}  # Maximum number of snapshots
 USE_OVERLAYROOT=${USE_OVERLAYROOT:-"true"}         # Whether to use overlay for snapshot boot
 SNAPSHOT_PERIOD_TYPE=${SNAPSHOT_PERIOD_TYPE:-"all"} # Type of snapshots to show
 VERBOSE=${VERBOSE:-0}                              # Verbosity level
+SNAPSHOTS_SUBMENU=${SNAPSHOTS_SUBMENU:-"true"}     # Use submenu for snapshots
+DEBUG_BOOT=${DEBUG_BOOT:-"false"}                  # Enable debug logging during boot
+# Default title format includes all available info with safety indicator
+SNAPSHOT_TITLE_FORMAT=${SNAPSHOT_TITLE_FORMAT:-"{kernel_version} [{safety}] - {date} {type} {description}"}
 
 # Constants
 NL='
 '       # Newline for processing
 date_format="+%b %d %Y %H:%M"  # Date format for snapshot display
 sep=";"  # Separator for data processing
+
+# Format entry title according to configured format
+# Parameters:
+# $1 - kernel_version
+# $2 - safety (SAFE or CAUTION)
+# $3 - date
+# $4 - type
+# $5 - description
+format_entry_title() {
+  local kernel_version="$1"
+  local safety="$2"
+  local date="$3"
+  local type="$4"
+  local description="$5"
+  
+  # Default format if not configured
+  local format_string="${SNAPSHOT_TITLE_FORMAT:-"{kernel_version} [{safety}] - {date} {type} {description}"}"
+  
+  # Replace variables in format string
+  local formatted_title="$format_string"
+  formatted_title="${formatted_title//\{kernel_version\}/$kernel_version}"
+  formatted_title="${formatted_title//\{safety\}/$safety}"
+  formatted_title="${formatted_title//\{date\}/$date}"
+  formatted_title="${formatted_title//\{type\}/$type}"
+  formatted_title="${formatted_title//\{description\}/$description}"
+  
+  # Clean up any empty placeholders with extra spaces
+  formatted_title="$(echo "$formatted_title" | sed 's/  */ /g' | sed 's/^ //g' | sed 's/ $//g')"
+  
+  echo "$formatted_title"
+}
 
 # Detect Timeshift configuration
 detect_timeshift_path() {
@@ -397,6 +432,13 @@ if [ ! -d "$loader_entries_path" ]; then
   mkdir -p "$loader_entries_path"
 fi
 
+# Create snapshots directory if using submenu and it doesn't exist
+snapshots_dir="${loader_entries_path}/snapshots"
+if [ "$SNAPSHOTS_SUBMENU" = "true" ] && [ ! -d "$snapshots_dir" ]; then
+  echo "Creating snapshots directory at $snapshots_dir"
+  mkdir -p "$snapshots_dir"
+fi
+
 # Clean up old snapshot entries from the boot loader
 for old_entry in "${loader_entries_path}"/*; do
   [ -r "$old_entry" ] || continue # entry not readable
@@ -420,6 +462,13 @@ for old_entry in "${loader_entries_path}"/*; do
   [ "$VERBOSE" -eq 0 ] || echo "Removing loader entry $old_entry"
   rm -f "$old_entry"
 done
+
+# If using submenu, also clean old snapshot entries in snapshots directory
+if [ "$SNAPSHOTS_SUBMENU" = "true" ]; then
+  # Clean all snapshot directories
+  find "${snapshots_dir}" -mindepth 1 -delete 2>/dev/null
+  echo "Cleaned old snapshot entries"
+fi
 
 # Find the correct entry to use as a template
 if [ -n "$current_boot_entry" ] && [ -f "${loader_entries_path}/${current_boot_entry}" ]; then
@@ -476,6 +525,11 @@ if [ "$use_overlayroot" != "false" ]; then
   fi
 fi
 
+# Add debug option if enabled
+if [ "$DEBUG_BOOT" = "true" ]; then
+  options="$options debug_boot"
+fi
+
 # Mount the root partition for snapshot detection
 mount_dir=$(get_tmp_folder)
 
@@ -503,6 +557,18 @@ btrfs_snapshots=$(
       (paste -d '' /dev/fd/3 /dev/fd/4) 4<&0) 3<&0 | tac
 )
 
+# Create a main entry for accessing snapshots if using submenu
+if [ "$SNAPSHOTS_SUBMENU" = "true" ]; then
+  # Create a main entry that directs users to the snapshots folder
+  cat > "${loader_entries_path}/snapshots.conf" << EOF
+title BTRFS Snapshots
+sort-key 900
+efi /EFI/systemd/systemd-bootx64.efi
+options snapshots
+EOF
+  echo "Created main entry for snapshots"
+fi
+
 # Add snapshots to the bootloader
 i="1"
 for pair in $btrfs_snapshots; do
@@ -521,27 +587,87 @@ for pair in $btrfs_snapshots; do
   # Skip the current/main snapshot
   [ "$btrfs_snapshot" = "$btrfs_parent_subvol" ] && continue
 
-  # Get snapshot title from metadata if available
+  # Get snapshot metadata
   snapshot_title="$btrfs_snapshot"
+  snap_type="N/A"
+  snap_description="N/A"
+  snapshot_date_trim="Unknown"
+  
   if has_timeshift || has_snapper; then
     date="", type="", description=""
     if get_snapshot_info_for_subvol "$btrfs_snapshot" "$snapshots" subvolume date type description; then
       snapshot_title="${date}${description:+ $description}${type:+ $type}"
+      snapshot_date_trim="$(trim "$date")"
+      snap_type="$(trim "$type")"
+      snap_description="$(trim "$description")"
     fi
   fi
 
-  # Create the bootloader entry
-  title_suffix="${snapshot_title}"
-  snapshot_loader_entry="${loader_entries_path}/${loader_entry_filename_base}-${i}snapshot.conf"
+  # Create snapshot folder for this snapshot
+  snapshot_folder_name=$(echo "$snapshot_title" | tr ' ' '_' | tr -dc '[:alnum:]_-')
+  snapshot_folder="${snapshots_dir}/${snapshot_folder_name}"
+  
+  if [ "$SNAPSHOTS_SUBMENU" = "true" ]; then
+    mkdir -p "$snapshot_folder"
+  fi
 
-  new=""
-  str_replace "$loader_entry_template" "<TITLE_SUFFIX>" "$title_suffix" new
-  str_replace "$new" "<SUBVOL>" "subvol=${btrfs_snapshot_path}" new
-  str_replace "$new" "<OPTIONS>" "$options" new
-  [ "$VERBOSE" -eq 0 ] || echo "Adding loader entry $snapshot_loader_entry"
-  echo "$new" >"$snapshot_loader_entry"
-
-  i=$((i + 1))
+  # Find all kernels in the snapshot
+  kernel_found=false
+  running_kernel_version=$(uname -r)
+  
+  # Get all kernels in the snapshot
+  kernel_versions=()
+  for kernel_file in "${mount_dir}/${btrfs_snapshot_path}/boot/vmlinuz-"*; do
+    [ -f "$kernel_file" ] || continue
+    kernel_version=$(basename "$kernel_file" | sed 's/vmlinuz-//')
+    kernel_versions+=("$kernel_version")
+  done
+  
+  # If no kernels found, skip this snapshot
+  if [ ${#kernel_versions[@]} -eq 0 ]; then
+    echo "No kernels found in snapshot $snapshot_title, skipping"
+    continue
+  fi
+  
+  # Create an entry for each kernel version
+  for kernel_version in "${kernel_versions[@]}"; do
+    # Check if kernel version matches current running kernel
+    if [ "$kernel_version" = "$running_kernel_version" ]; then
+      safety_indicator="SAFE"
+    else
+      safety_indicator="CAUTION"
+    fi
+    
+    # Format title using the configured format
+    title_suffix=$(format_entry_title "$kernel_version" "$safety_indicator" "$snapshot_date_trim" "$snap_type" "$snap_description")
+    
+    if [ "$SNAPSHOTS_SUBMENU" = "true" ]; then
+      # Create entry in the snapshot folder
+      output_path="${snapshot_folder}/${kernel_version}.conf"
+    else
+      # Create entry in the main entries directory
+      output_path="${loader_entries_path}/${loader_entry_filename_base}-${i}-${kernel_version}.conf"
+    fi
+    
+    # Create the entry
+    new=""
+    str_replace "$loader_entry_template" "<TITLE_SUFFIX>" "$title_suffix" new
+    str_replace "$new" "<SUBVOL>" "subvol=${btrfs_snapshot_path}" new
+    str_replace "$new" "<OPTIONS>" "$options" new
+    
+    # Add kernel version to the entry
+    new=$(echo "$new" | sed "s|vmlinuz-linux|vmlinuz-${kernel_version}|g; s|initramfs-linux.img|initramfs-${kernel_version}.img|g; s|initramfs-linux-fallback.img|initramfs-${kernel_version}-fallback.img|g")
+    
+    [ "$VERBOSE" -eq 0 ] || echo "Adding loader entry $output_path"
+    echo "$new" > "$output_path"
+    
+    kernel_found=true
+  done
+  
+  # If we found and processed kernels for this snapshot, increment counter
+  if [ "$kernel_found" = true ]; then
+    i=$((i + 1))
+  fi
 done
 
 echo "Added $((i - 1)) snapshots to the systemd-boot loader"

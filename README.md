@@ -1,8 +1,3 @@
-# File: README.md
-# Project Path: ./README.md
-#
-# Documentation for systemd-boot-snapshots
-
 # systemd-boot-snapshots for Arch Linux
 
 This tool enhances systemd-boot by adding BTRFS snapshots to the boot menu.
@@ -10,11 +5,13 @@ This tool enhances systemd-boot by adding BTRFS snapshots to the boot menu.
 ## Features
 
 - Boot into a system snapshot directly from the boot menu
+- Organized snapshot submenu structure for better navigation
 - Support for BTRFS snapshots, including those created with "Timeshift" and "Snapper"
-- Support for read-only snapshots
-- Automatic overlay configuration when booting from a snapshot
+- Support for read-only snapshots with overlayfs protection
 - Automatic mounting of kernel modules directory from the main volume if needed
 - Desktop notification when booting in snapshot mode
+- Detailed debugging options for troubleshooting boot issues
+- Customizable snapshot naming with safety indicators
 
 ## Requirements
 
@@ -75,10 +72,70 @@ sudo systemctl enable timeshift-snapshots.path
 
 The configuration file is located at `/etc/systemd-boot-snapshots.conf` with a fallback at `/etc/default/systemd-boot-snapshots.conf` and contains the following options:
 
-- `SHOW_SNAPSHOTS_MAX`: maximum number of snapshots to show (default: 99999)
-- `SNAPSHOT_PERIOD_TYPE`: type of snapshots to show (default: "all", options: "ondemand", "boot", "hourly", "daily", "weekly", "monthly")
-- `USE_OVERLAYROOT`: whether to use an overlay to protect the snapshot (default: "true")
-- `VERBOSE`: verbosity level (default: 0)
+### Basic Options
+
+- `SHOW_SNAPSHOTS_MAX`: Maximum number of snapshots to show (default: 99999)
+- `SNAPSHOT_PERIOD_TYPE`: Type of snapshots to show (default: "all", options: "ondemand", "boot", "hourly", "daily", "weekly", "monthly")
+- `VERBOSE`: Verbosity level of the script (default: 0)
+
+### Snapshot and Boot Behavior
+
+- `USE_OVERLAYROOT`: Whether to use an overlay to protect the snapshot (default: "true")  
+  When enabled, creates a tmpfs overlay that makes the snapshot appear writable while preserving the snapshot integrity. Changes made while booted in a snapshot are discarded on reboot.
+
+  **⚠️ IMPORTANT SAFETY WARNING**:  
+  - This option should **ALWAYS** be set to `true`
+  - Setting to `false` will attempt to mount snapshots in read-write mode, which can permanently corrupt your snapshots
+  - Corrupted snapshots cannot be used for system recovery
+  - Only use `false` if you fully understand the consequences and have specific technical reasons
+
+### User Interface Options
+
+- `SNAPSHOTS_SUBMENU`: Place snapshots in a dedicated submenu for better organization (default: "true")
+- `SNAPSHOT_TITLE_FORMAT`: Format for snapshot entry titles in the boot menu  
+  (default: "{kernel_version} [{safety}] - {date} {type} {description}")
+
+### Troubleshooting Options
+
+- `DEBUG_BOOT`: Enable detailed debug logging during boot (default: "false")  
+  When enabled, detailed logs are written to `/var/log/systemd-boot-snapshots-debug.log` to help diagnose boot issues
+
+## Snapshot Entry Naming
+
+Systemd-boot-snapshots allows you to customize how snapshot entries appear in the boot menu. You can configure this by editing the `SNAPSHOT_TITLE_FORMAT` parameter in the configuration file.
+
+### Naming Format Options
+
+The following variables are available for use in the format string:
+
+- `{kernel_version}` - The kernel version contained in the snapshot (e.g., "5.15.0-1-arch")
+- `{safety}` - Shows either "SAFE" or "CAUTION" depending on kernel compatibility with current system
+- `{date}` - The date when the snapshot was created 
+- `{type}` - The type or tag of the snapshot (e.g., "hourly", "daily", "pre", "post")
+- `{description}` - The description or comment for the snapshot
+
+### Examples
+
+Default format (shows all information):
+```
+SNAPSHOT_TITLE_FORMAT="{kernel_version} [{safety}] - {date} {type} {description}"
+```
+
+Simple format (just kernel and date):
+```
+SNAPSHOT_TITLE_FORMAT="{kernel_version} - {date}"
+```
+
+Focus on system safety:
+```
+SNAPSHOT_TITLE_FORMAT="{safety} - {date} {description}"
+```
+
+### Safety Indicators
+
+Entries marked as "SAFE" indicate snapshots with kernels that match your current running kernel version, meaning they are likely to boot without problems. Entries marked as "CAUTION" have different kernel versions that might not be fully compatible with your current hardware configuration.
+
+For the most reliable boot experience, prefer snapshots marked as "SAFE" when recovering your system.
 
 ## Usage
 
@@ -92,7 +149,24 @@ sudo update-systemd-boot-snapshots
 At boot time, press the space bar to enter the boot menu.
 Now you can select a snapshot entry to boot into that system state.
 
+### Navigating the Snapshot Menu
+
+When `SNAPSHOTS_SUBMENU` is enabled (default):
+1. Select the "BTRFS Snapshots" entry in the main boot menu
+2. Navigate to the snapshot you want to boot
+3. Select an entry based on kernel version
+   - Entries labeled "SAFE" indicate compatibility with the current system
+   - Entries labeled "CAUTION" may have compatibility issues
+
+### Booting into Snapshots
+
 When booting into a snapshot, you will see a desktop notification informing you that you are in snapshot mode and that changes to the system will be discarded on reboot.
+
+If you want to make permanent changes while booted in a snapshot, you will need to use your snapshot tool (Snapper/Timeshift) to restore the snapshot to your main system.
+
+### Troubleshooting Boot Issues
+
+If you experience problems booting into snapshots, you can enable debugging with the `DEBUG_BOOT` option in the configuration file. After enabling it, detailed logs will be written to `/var/log/systemd-boot-snapshots-debug.log` on the next boot attempt.
 
 ## Notes for Arch Linux and derivatives
 
@@ -122,6 +196,11 @@ This project has been adapted from a version originally developed for Ubuntu/Fed
 - If you don't see the desktop notification, verify that:
   - the system is actually running from a snapshot
   - desktop notification packages are installed
+
+- For encrypted root partitions (LUKS):
+  - Enable the `DEBUG_BOOT` option in configuration
+  - Check the logs at `/var/log/systemd-boot-snapshots-debug.log`
+  - Ensure LUKS device is properly unlocked before mounting snapshots
 
 ## Version History
 

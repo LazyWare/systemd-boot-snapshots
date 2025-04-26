@@ -24,6 +24,7 @@ dist/
 .vscode/
 .idea/
 *.swp
+gitmanager/
 
 # Logs and databases
 *.log

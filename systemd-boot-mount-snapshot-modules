@@ -10,14 +10,46 @@
 # It handles cases where the kernel in the snapshot doesn't match
 # the running kernel by mounting the modules from the parent subvolume
 
+# Debug log function
+debug_log() {
+    if grep -q "debug_boot" /proc/cmdline; then
+        echo "[systemd-boot-snapshots] $(date) - $1" >> /var/log/systemd-boot-snapshots-debug.log
+    fi
+}
+
+# Start debug logging if enabled
+if grep -q "debug_boot" /proc/cmdline; then
+    # Ensure log directory exists
+    mkdir -p /var/log
+    echo "===============================================" > /var/log/systemd-boot-snapshots-debug.log
+    echo "systemd-boot-snapshots debug log - $(date)" >> /var/log/systemd-boot-snapshots-debug.log
+    echo "===============================================" >> /var/log/systemd-boot-snapshots-debug.log
+    echo "Command line parameters:" >> /var/log/systemd-boot-snapshots-debug.log
+    cat /proc/cmdline >> /var/log/systemd-boot-snapshots-debug.log
+    echo "Environment:" >> /var/log/systemd-boot-snapshots-debug.log
+    env | sort >> /var/log/systemd-boot-snapshots-debug.log
+    echo "Mount points:" >> /var/log/systemd-boot-snapshots-debug.log
+    mount >> /var/log/systemd-boot-snapshots-debug.log
+    echo "LUKS devices:" >> /var/log/systemd-boot-snapshots-debug.log
+    ls -l /dev/mapper/ >> /var/log/systemd-boot-snapshots-debug.log 2>&1
+    echo "===============================================" >> /var/log/systemd-boot-snapshots-debug.log
+fi
+
 # Input parameters
 root_device="$1"        # The root block device
 root_mount="$2"         # The mount point of the root filesystem
 root_flags="$3"         # Mount flags for the root filesystem
 root_fstype="$4"        # Filesystem type of root (should be btrfs)
 
+debug_log "Input parameters:"
+debug_log "root_device: $root_device"
+debug_log "root_mount: $root_mount"
+debug_log "root_flags: $root_flags"
+debug_log "root_fstype: $root_fstype"
+
 # Get parent subvolume from kernel command line
 parent_subvol="$(sed -n -e 's/.*\(parent_subvol=[^ ]*\).*/\1/; s/parent_subvol=//p' /proc/cmdline)"
+debug_log "Parent subvolume: $parent_subvol"
 
 # Runtime directories
 run_dir="/run/systemd-boot-snapshots"
@@ -39,14 +71,15 @@ strglobin() {
 # Function to install the notification service that informs user they're in a snapshot
 install_notifier_service()
 {
+    debug_log "Installing notification service..."
     # Detect snapshot type based on mount flags
     snapshot_type=""
-    if strglobin "$root_flags" "[ ,]subvol=*.snapshots/[0-9]*/snapshot"
-    then
+    if strglobin "$root_flags" "[ ,]subvol=*.snapshots/[0-9]*/snapshot"; then
         snapshot_type="snapper"
-    elif strglobin "$root_flags" "[ ,]subvol=*timeshift-btrfs/snapshots/[0-9][0-9][0-9][0-9]-[0-9]*/*"
-    then
+        debug_log "Detected snapshot type: snapper"
+    elif strglobin "$root_flags" "[ ,]subvol=*timeshift-btrfs/snapshots/[0-9][0-9][0-9][0-9]-[0-9]*/*"; then
         snapshot_type="timeshift"
+        debug_log "Detected snapshot type: timeshift"
     fi
 
     # Set up systemd user service to show notification at desktop session start
@@ -74,6 +107,7 @@ WantedBy=$install_target
     mkdir -p "/run/systemd/user/${install_target}.wants"
     echo "$unit" > "/run/systemd/user/systemd-boot-snapshots-notify.service"
     ln -s "/run/systemd/user/systemd-boot-snapshots-notify.service" "/run/systemd/user/${install_target}.wants/systemd-boot-snapshots-notify.service"
+    debug_log "Notification service installed"
 }
 
 # Check for correct usage

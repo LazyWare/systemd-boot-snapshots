@@ -6,7 +6,7 @@
 
 # Maintainer: [Anonimo] <anonimo@vivaldi.net>
 pkgname=systemd-boot-snapshots
-pkgver=0.1.1
+pkgver=0.2.0
 pkgrel=1
 pkgdesc="Enhances systemd-boot by adding BTRFS snapshots to the boot menu"
 arch=('any')
@@ -21,7 +21,7 @@ optdepends=('timeshift: support for Timeshift snapshots'
 backup=('etc/systemd-boot-snapshots.conf')
 install=${pkgname}.install
 source=("${pkgname}-${pkgver}.tar.gz::${url}/archive/v${pkgver}.tar.gz")
-sha256sums=('a17cf3803b7ab96c44f6548f165011359f2c0a735fbe0c67d1afb7a392e3ef07')
+sha256sums=('27579e2dc12f57f76055ffc1dc14bd1fa56af6e3582a42391233372703bcfccb')
 
 package() {
   cd "${srcdir}/${pkgname}-${pkgver}"
